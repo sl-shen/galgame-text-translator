@@ -108,9 +108,12 @@ class TranslatorGUI:
 
         try:
 
-            def process_ocr_result(ocr_result):
-                # Filter out the top row of text
-                filtered_text = [block for block in ocr_result if block['top'] > 20]
+            def process_ocr_result(ocr_result, window_height):
+                # Calculate the threshold based on window height
+                threshold = window_height * 0.5
+
+                # Filter out the text blocks above the threshold
+                filtered_text = [block for block in ocr_result if block['top'] > threshold]
 
                 # Sort the remaining text blocks from left to right, top to bottom
                 sorted_text = sorted(filtered_text, key=lambda block: (block['top'], block['left']))
@@ -123,7 +126,10 @@ class TranslatorGUI:
 
             # Get window position and size
             left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
-            
+
+            window_height = bottom - top
+            print(f"window_height: {window_height}")
+
             # Capture window screenshot and save to current directory
             screenshot_path = os.path.join(os.getcwd(), "screenshot.png")
             pyautogui.screenshot(screenshot_path, region=(left, top, right-left, bottom-top))
@@ -134,7 +140,7 @@ class TranslatorGUI:
 
             if ocr_result['errcode'] == 0:
                 
-                japanese_text = process_ocr_result(ocr_result['ocr_response'])
+                japanese_text = process_ocr_result(ocr_result['ocr_response'], window_height)
                 
                 # Print the detected Japanese text
                 print(f"Detected Japanese text: {japanese_text}")
