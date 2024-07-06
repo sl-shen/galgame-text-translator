@@ -1,0 +1,1 @@
+# galgame-text-translator
