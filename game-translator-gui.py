@@ -8,6 +8,7 @@ import time
 import os
 import wcocr
 import hashlib
+import pykakasi 
 
 # Initialize WeChat OCR
 wechat_path = r"e:\WeChat\[3.9.11.19]"
@@ -61,6 +62,12 @@ class TranslatorGUI:
         self.original_text = tk.Text(master, height=10, width=80)
         self.original_text.pack()
 
+        # Create and place romaji text box
+        self.romaji_label = ttk.Label(master, text="罗马字注音:")
+        self.romaji_label.pack()
+        self.romaji_text = tk.Text(master, height=10, width=80)
+        self.romaji_text.pack()
+
         # Create and place translated text box
         self.translated_label = ttk.Label(master, text="翻译:")
         self.translated_label.pack()
@@ -109,12 +116,23 @@ class TranslatorGUI:
 
         try:
             def process_ocr_result(ocr_result, window_height):
-                threshold = window_height * 0.5
-                filtered_text = [block for block in ocr_result if block['top'] > threshold]
+                threshold_top = window_height * 0.5
+                threshold_bottom = window_height * 0.9
+                filtered_text = [block for block in ocr_result if threshold_bottom > block['top'] > threshold_top]
                 sorted_text = sorted(filtered_text, key=lambda block: (block['top'], block['left']))
                 processed_text = ''.join([block['text'] for block in sorted_text])
                 return processed_text
             
+            def get_romaji(text_jp) -> str:
+                text = text_jp
+                kks = pykakasi.kakasi()
+                result = kks.convert(text)
+                sentence = ""
+                for item in result:
+                    word = item['orig'] + " (%s) " % item['hira'] if not item['orig'] == item['hira'] else item['orig']
+                    sentence += word
+                return sentence
+                    
             left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
             window_height = bottom - top
             print(f"window_height: {window_height}")
@@ -134,11 +152,17 @@ class TranslatorGUI:
                     japanese_text = process_ocr_result(ocr_result['ocr_response'], window_height)
                     print(f"Detected Japanese text: {japanese_text}")
                     
+                    romaji_text = get_romaji(japanese_text)
+                    print(f"Romaji text: {romaji_text}")
+
                     chinese_text = GoogleTranslator(source="ja", target="zh-CN").translate(text=japanese_text)
                     print(f"Chinese text: {chinese_text}")
+
                     
                     self.original_text.delete(1.0, tk.END)
                     self.original_text.insert(tk.END, japanese_text)
+                    self.romaji_text.delete(1.0, tk.END)
+                    self.romaji_text.insert(tk.END, romaji_text)
                     self.translated_text.delete(1.0, tk.END)
                     self.translated_text.insert(tk.END, chinese_text)
                 else:
