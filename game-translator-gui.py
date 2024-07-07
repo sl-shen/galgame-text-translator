@@ -62,7 +62,7 @@ class TranslatorGUI:
         style = Style(theme="cosmo")
 
         # Set window size and make it resizable
-        master.geometry("800x600")
+        master.geometry("900x700")
         master.minsize(600, 400)
 
         # Custom fonts
@@ -77,26 +77,23 @@ class TranslatorGUI:
         title_label = ttk.Label(main_frame, text="游戏实时翻译助手", font=self.title_font, foreground="#3498db")
         title_label.pack(pady=(0, 20))
 
-        # Original text area
-        original_frame = ttk.LabelFrame(main_frame, text="原文", padding=10)
-        original_frame.pack(fill=tk.BOTH, expand=True)
+        # Create notebook for tabs
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        self.original_text = tk.Text(original_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
-        self.original_text.pack(fill=tk.BOTH, expand=True)
+        # Main tab
+        self.main_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.main_tab, text="主界面")
 
-        # Romaji text area
-        romaji_frame = ttk.LabelFrame(main_frame, text="罗马字注音", padding=10)
-        romaji_frame.pack(fill=tk.BOTH, expand=True)
+        # Settings tab
+        self.settings_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_tab, text="设置")
 
-        self.romaji_text = tk.Text(romaji_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
-        self.romaji_text.pack(fill=tk.BOTH, expand=True)
+        # Create main tab content
+        self.create_main_tab()
 
-        # Translated text area
-        translated_frame = ttk.LabelFrame(main_frame, text="翻译", padding=10)
-        translated_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.translated_text = tk.Text(translated_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
-        self.translated_text.pack(fill=tk.BOTH, expand=True)
+        # Create settings tab content
+        self.create_settings_tab()
 
         # Button frame
         button_frame = ttk.Frame(main_frame, padding=(0, 20, 0, 0))
@@ -120,6 +117,63 @@ class TranslatorGUI:
         self.hwnd = None
         self.last_screenshot_hash = None
         self.last_ocr_result = None
+        self.threshold_top = 0.5
+        self.threshold_bottom = 0.9
+
+    def create_main_tab(self):
+        # Original text area
+        original_frame = ttk.LabelFrame(self.main_tab, text="原文", padding=10)
+        original_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.original_text = tk.Text(original_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
+        self.original_text.pack(fill=tk.BOTH, expand=True)
+
+        # Romaji text area
+        romaji_frame = ttk.LabelFrame(self.main_tab, text="罗马字注音", padding=10)
+        romaji_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.romaji_text = tk.Text(romaji_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
+        self.romaji_text.pack(fill=tk.BOTH, expand=True)
+
+        # Translated text area
+        translated_frame = ttk.LabelFrame(self.main_tab, text="翻译", padding=10)
+        translated_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.translated_text = tk.Text(translated_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
+        self.translated_text.pack(fill=tk.BOTH, expand=True)
+
+    def create_settings_tab(self):
+        # Threshold input frame
+        threshold_frame = ttk.LabelFrame(self.settings_tab, text="阈值设置", padding=10)
+        threshold_frame.pack(fill=tk.X, pady=(10, 0))
+
+        # Threshold top input
+        ttk.Label(threshold_frame, text="上阈值 (0-1):").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.threshold_top_var = tk.StringVar(value="0.5")
+        self.threshold_top_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_top_var, width=10)
+        self.threshold_top_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Threshold bottom input
+        ttk.Label(threshold_frame, text="下阈值 (0-1):").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        self.threshold_bottom_var = tk.StringVar(value="0.9")
+        self.threshold_bottom_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_bottom_var, width=10)
+        self.threshold_bottom_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Apply threshold button
+        self.apply_threshold_button = ttk.Button(threshold_frame, text="应用阈值", command=self.apply_threshold, style="info.TButton")
+        self.apply_threshold_button.grid(row=2, column=0, columnspan=2, padx=5, pady=10)
+
+    def apply_threshold(self):
+        try:
+            self.threshold_top = float(self.threshold_top_var.get())
+            self.threshold_bottom = float(self.threshold_bottom_var.get())
+            if 0 <= self.threshold_top < self.threshold_bottom <= 1:
+                self.status_var.set(f"阈值已更新: 上 {self.threshold_top}, 下 {self.threshold_bottom}")
+            else:
+                raise ValueError("阈值必须在0到1之间，且上阈值必须小于下阈值")
+        except ValueError as e:
+            messagebox.showerror("错误", str(e))
+            self.status_var.set("阈值更新失败")
 
     def select_window(self):
         selector = WindowSelector()
@@ -154,8 +208,8 @@ class TranslatorGUI:
 
         try:
             def process_ocr_result(ocr_result, window_height):
-                threshold_top = window_height * 0.5
-                threshold_bottom = window_height * 0.9
+                threshold_top = int(window_height * self.threshold_top)
+                threshold_bottom = int(window_height * self.threshold_bottom)
                 filtered_text = [block for block in ocr_result if threshold_bottom > block['top'] > threshold_top]
                 sorted_text = sorted(filtered_text, key=lambda block: (block['top'], block['left']))
                 processed_text = ''.join([block['text'] for block in sorted_text])
