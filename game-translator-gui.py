@@ -5,9 +5,9 @@ import pyautogui
 import win32gui
 import win32com.client
 import time
-import googletrans
 import os
 import wcocr
+import hashlib
 
 # Initialize WeChat OCR
 wechat_path = r"e:\WeChat\[3.9.11.19]"
@@ -58,13 +58,13 @@ class TranslatorGUI:
         # Create and place original text box
         self.original_label = ttk.Label(master, text="原文:")
         self.original_label.pack()
-        self.original_text = tk.Text(master, height=5, width=50)
+        self.original_text = tk.Text(master, height=10, width=80)
         self.original_text.pack()
 
         # Create and place translated text box
         self.translated_label = ttk.Label(master, text="翻译:")
         self.translated_label.pack()
-        self.translated_text = tk.Text(master, height=5, width=50)
+        self.translated_text = tk.Text(master, height=10, width=80)
         self.translated_text.pack()
 
         # Create select window button
@@ -77,6 +77,8 @@ class TranslatorGUI:
 
         self.is_translating = False
         self.hwnd = None
+        self.last_screenshot_hash = None
+        self.last_ocr_result = None
 
     def select_window(self):
         selector = WindowSelector()
@@ -97,75 +99,59 @@ class TranslatorGUI:
             self.start_stop_button.config(text="开始翻译")
         else:
             self.is_translating = True
-            self.start_stop_button.config(text="停止翻译")
+            self.start_stop_button.config(text="停止翻译", state=tk.DISABLED)
             self.translate_loop()
     
-
-
     def translate_loop(self):
         if not self.is_translating:
+            self.start_stop_button.config(text="开始翻译", state=tk.NORMAL)
             return
 
         try:
-
             def process_ocr_result(ocr_result, window_height):
-                # Calculate the threshold based on window height
                 threshold = window_height * 0.5
-
-                # Filter out the text blocks above the threshold
                 filtered_text = [block for block in ocr_result if block['top'] > threshold]
-
-                # Sort the remaining text blocks from left to right, top to bottom
                 sorted_text = sorted(filtered_text, key=lambda block: (block['top'], block['left']))
-
-                # Combine the sorted text blocks into a single string
                 processed_text = ''.join([block['text'] for block in sorted_text])
-
                 return processed_text
             
-
-            # Get window position and size
             left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
-
             window_height = bottom - top
             print(f"window_height: {window_height}")
 
-            # Capture window screenshot and save to current directory
             screenshot_path = os.path.join(os.getcwd(), "screenshot.png")
             pyautogui.screenshot(screenshot_path, region=(left, top, right-left, bottom-top))
             
-            # Extract text using WeChat OCR
             ocr_result = wcocr.ocr(screenshot_path)
-            print(f"Raw ocr: {ocr_result}")
+            #print(f"Raw ocr: {ocr_result}")
 
             if ocr_result['errcode'] == 0:
+                ocr_result_text = ''.join([block['text'] for block in ocr_result['ocr_response']])
                 
-                japanese_text = process_ocr_result(ocr_result['ocr_response'], window_height)
-                
-                # Print the detected Japanese text
-                print(f"Detected Japanese text: {japanese_text}")
-                
-                # Translate the text
-                chinese_text = GoogleTranslator(source="ja", target="zh-CN").translate(text=japanese_text)
-
-                print(f"Chinese text: {chinese_text}")
-                
-                # Update GUI
-                self.original_text.delete(1.0, tk.END)
-                self.original_text.insert(tk.END, japanese_text)
-                self.translated_text.delete(1.0, tk.END)
-                self.translated_text.insert(tk.END, chinese_text)
+                if ocr_result_text != self.last_ocr_result:
+                    self.last_ocr_result = ocr_result_text
+                    
+                    japanese_text = process_ocr_result(ocr_result['ocr_response'], window_height)
+                    print(f"Detected Japanese text: {japanese_text}")
+                    
+                    chinese_text = GoogleTranslator(source="ja", target="zh-CN").translate(text=japanese_text)
+                    print(f"Chinese text: {chinese_text}")
+                    
+                    self.original_text.delete(1.0, tk.END)
+                    self.original_text.insert(tk.END, japanese_text)
+                    self.translated_text.delete(1.0, tk.END)
+                    self.translated_text.insert(tk.END, chinese_text)
+                else:
+                    print("Same context")
             else:
                 print("No text detected in image")
-                
-            # Remove screenshot file
+            
             os.remove(screenshot_path)
         except Exception as e:
             messagebox.showerror("错误", f"翻译过程中出现错误: {str(e)}")
             self.is_translating = False
-            self.start_stop_button.config(text="开始翻译")
+            self.start_stop_button.config(text="开始翻译", state=tk.NORMAL)
         
-        # Run every second
         if self.is_translating:
             self.master.after(1000, self.translate_loop)
 
