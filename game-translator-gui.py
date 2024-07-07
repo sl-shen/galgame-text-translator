@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, font
 from deep_translator import GoogleTranslator
 import pyautogui
 import win32gui
@@ -9,6 +9,7 @@ import os
 import wcocr
 import hashlib
 import pykakasi 
+import difflib
 
 # Initialize WeChat OCR
 wechat_path = r"e:\WeChat\[3.9.11.19]"
@@ -56,37 +57,52 @@ class TranslatorGUI:
         self.master = master
         master.title("实时游戏翻译器")
 
+        # Set the theme to "clam" for a modern look
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        # Create a custom font
+        self.custom_font = font.Font(family="FZLanTingHei", size=13)
+
+        # Create a frame for the text boxes
+        text_frame = ttk.Frame(master, padding=10)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
         # Create and place original text box
-        self.original_label = ttk.Label(master, text="原文:")
-        self.original_label.pack()
-        self.original_text = tk.Text(master, height=10, width=80)
-        self.original_text.pack()
+        self.original_label = ttk.Label(text_frame, text="原文:", font=self.custom_font)
+        self.original_label.pack(anchor=tk.W)
+        self.original_text = tk.Text(text_frame, height=8, width=50, font=self.custom_font, wrap=tk.WORD)
+        self.original_text.pack(fill=tk.X, expand=True)
 
         # Create and place romaji text box
-        self.romaji_label = ttk.Label(master, text="罗马字注音:")
-        self.romaji_label.pack()
-        self.romaji_text = tk.Text(master, height=10, width=80)
-        self.romaji_text.pack()
+        self.romaji_label = ttk.Label(text_frame, text="罗马字注音:", font=self.custom_font)
+        self.romaji_label.pack(anchor=tk.W, pady=(10, 0))
+        self.romaji_text = tk.Text(text_frame, height=8, width=50, font=self.custom_font, wrap=tk.WORD)
+        self.romaji_text.pack(fill=tk.X, expand=True)
 
         # Create and place translated text box
-        self.translated_label = ttk.Label(master, text="翻译:")
-        self.translated_label.pack()
-        self.translated_text = tk.Text(master, height=10, width=80)
-        self.translated_text.pack()
+        self.translated_label = ttk.Label(text_frame, text="翻译:", font=self.custom_font)
+        self.translated_label.pack(anchor=tk.W, pady=(10, 0))
+        self.translated_text = tk.Text(text_frame, height=8, width=50, font=self.custom_font, wrap=tk.WORD)
+        self.translated_text.pack(fill=tk.X, expand=True)
+
+
+        # Create a frame for the buttons
+        button_frame = ttk.Frame(master, padding=10)
+        button_frame.pack(fill=tk.X)
 
         # Create select window button
-        self.select_window_button = ttk.Button(master, text="选择游戏窗口", command=self.select_window)
-        self.select_window_button.pack()
+        self.select_window_button = ttk.Button(button_frame, text="选择游戏窗口", command=self.select_window)
+        self.select_window_button.pack(side=tk.LEFT, padx=(0, 10))
 
         # Create start/stop button
-        self.start_stop_button = ttk.Button(master, text="开始翻译", command=self.toggle_translation)
-        self.start_stop_button.pack()
+        self.start_stop_button = ttk.Button(button_frame, text="开始翻译", command=self.toggle_translation)
+        self.start_stop_button.pack(side=tk.LEFT)
 
         self.is_translating = False
         self.hwnd = None
         self.last_screenshot_hash = None
         self.last_ocr_result = None
-
     def select_window(self):
         selector = WindowSelector()
         self.hwnd = selector.select_window()
@@ -106,7 +122,7 @@ class TranslatorGUI:
             self.start_stop_button.config(text="开始翻译")
         else:
             self.is_translating = True
-            self.start_stop_button.config(text="停止翻译", state=tk.DISABLED)
+            self.start_stop_button.config(text="停止翻译")
             self.translate_loop()
     
     def translate_loop(self):
@@ -146,7 +162,7 @@ class TranslatorGUI:
             if ocr_result['errcode'] == 0:
                 ocr_result_text = ''.join([block['text'] for block in ocr_result['ocr_response']])
                 
-                if ocr_result_text != self.last_ocr_result:
+                if self.last_ocr_result is None or difflib.SequenceMatcher(None, ocr_result_text, self.last_ocr_result).ratio() < 0.95:
                     self.last_ocr_result = ocr_result_text
                     
                     japanese_text = process_ocr_result(ocr_result['ocr_response'], window_height)
