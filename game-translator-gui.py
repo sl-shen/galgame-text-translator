@@ -11,6 +11,7 @@ import hashlib
 import pykakasi 
 import difflib
 from ttkbootstrap import Style
+import configparser
 
 # Initialize WeChat OCR
 wechat_path = r"e:\WeChat\[3.9.11.19]"
@@ -58,10 +59,14 @@ class TranslatorGUI:
         self.master = master
         master.title("实时游戏翻译器")
 
+        # Load configuration
+        self.config = configparser.ConfigParser()
+        self.config_file = 'translator_config.ini'
+        self.load_config()
         
         # Initialize WeChat paths
-        self.wechat_path = tk.StringVar(value=r"C:\Program Files (x86)\Tencent\WeChat\[3.9.11.17]")
-        self.wechatocr_path = tk.StringVar(value=os.getenv("APPDATA") + r"\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\7079\extracted\WeChatOCR.exe")
+        self.wechat_path = tk.StringVar(value=self.config.get('Paths', 'wechat_path', fallback=r"C:\Program Files (x86)\Tencent\WeChat\[3.9.11.17]"))
+        self.wechatocr_path = tk.StringVar(value=self.config.get('Paths', 'wechatocr_path', fallback=os.getenv("APPDATA") + r"\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\7079\extracted\WeChatOCR.exe"))
 
         # Use ttkbootstrap for a modern look
         style = Style(theme="cosmo")
@@ -124,6 +129,22 @@ class TranslatorGUI:
         self.last_ocr_result = None
         self.threshold_top = 0.5
         self.threshold_bottom = 0.9
+
+
+    def load_config(self):
+        if os.path.exists(self.config_file):
+            self.config.read(self.config_file)
+        else:
+            self.config['Paths'] = {
+                'wechat_path': r"C:\Program Files (x86)\Tencent\WeChat\[3.9.11.17]",
+                'wechatocr_path': os.getenv("APPDATA") + r"\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\7079\extracted\WeChatOCR.exe"
+            }
+            self.save_config()
+
+    def save_config(self):
+        with open(self.config_file, 'w') as configfile:
+            self.config.write(configfile)
+
 
     def create_main_tab(self):
         # Original text area
@@ -206,8 +227,13 @@ class TranslatorGUI:
             # Re-initialize WeChat OCR with new paths
             wcocr.init(wechatocr_path, wechat_path)
             
-            self.status_var.set("WeChat 路径已更新")
-            messagebox.showinfo("成功", "WeChat 路径已成功更新")
+            # Save the new paths to config
+            self.config['Paths']['wechat_path'] = wechat_path
+            self.config['Paths']['wechatocr_path'] = wechatocr_path
+            self.save_config()
+            
+            self.status_var.set("WeChat 路径已更新并保存")
+            messagebox.showinfo("成功", "WeChat 路径已成功更新并保存")
         except Exception as e:
             messagebox.showerror("错误", str(e))
             self.status_var.set("WeChat 路径更新失败")
