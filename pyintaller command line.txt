@@ -1,3 +1,3 @@
 pip install pyinstaller
 cd path/to/your/script/directory
-pyinstaller --onefile --windowed --add-data "./wcocr.pyd:wcocr" --hidden-import=pykakasi game-translator-gui.py
+pyinstaller --onefile --windowed --add-data "./wcocr.pyd:wcocr" game-translator-gui.py
