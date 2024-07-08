@@ -71,6 +71,8 @@ class TranslatorGUI:
         # Initialize thresholds
         self.threshold_top = float(self.config.get('Thresholds', 'threshold_top', fallback='0'))
         self.threshold_bottom = float(self.config.get('Thresholds', 'threshold_bottom', fallback='1'))
+        self.threshold_left = float(self.config.get('Thresholds', 'threshold_left', fallback='0'))
+        self.threshold_right = float(self.config.get('Thresholds', 'threshold_right', fallback='1'))
 
         # Use ttkbootstrap for a modern look
         style = Style(theme="cosmo")
@@ -143,7 +145,9 @@ class TranslatorGUI:
             }
             self.config['Thresholds'] = {
                 'threshold_top': '0',
-                'threshold_bottom': '1'
+                'threshold_bottom': '1',
+                'threshold_left': '0',
+                'threshold_right': '1'
             }
             self.save_config()
 
@@ -198,13 +202,13 @@ class TranslatorGUI:
 
         # Left threshold input
         ttk.Label(threshold_frame, text="左阈值 (0-1):").grid(row=0, column=2, padx=(20,5), pady=5, sticky=tk.W)
-        self.threshold_left_var = tk.StringVar(value=str(getattr(self, 'threshold_left', 0.1)))
+        self.threshold_left_var = tk.StringVar(value=str(self.threshold_left))
         self.threshold_left_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_left_var, width=10)
         self.threshold_left_entry.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
 
         # Right threshold input
         ttk.Label(threshold_frame, text="右阈值 (0-1):").grid(row=1, column=2, padx=(20,5), pady=5, sticky=tk.W)
-        self.threshold_right_var = tk.StringVar(value=str(getattr(self, 'threshold_right', 0.9)))
+        self.threshold_right_var = tk.StringVar(value=str(self.threshold_right))
         self.threshold_right_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_right_var, width=10)
         self.threshold_right_entry.grid(row=1, column=3, padx=5, pady=5, sticky=tk.W)
 
@@ -268,6 +272,8 @@ class TranslatorGUI:
         try:
             self.threshold_top = float(self.threshold_top_var.get())
             self.threshold_bottom = float(self.threshold_bottom_var.get())
+            self.threshold_left = float(self.threshold_left_var.get())
+            self.threshold_right = float(self.threshold_right_var.get())
             if 0 <= self.threshold_top < self.threshold_bottom <= 1:
                 # Save the new thresholds to config
                 self.config['Thresholds']['threshold_top'] = str(self.threshold_top)
@@ -277,6 +283,16 @@ class TranslatorGUI:
                 messagebox.showinfo("成功", "阈值已成功更新并保存")
             else:
                 raise ValueError("阈值必须在0到1之间，且上阈值必须小于下阈值")
+            
+            if 0 <= self.threshold_left < self.threshold_right <= 1:
+                # Save the new thresholds to config
+                self.config['Thresholds']['threshold_left'] = str(self.threshold_left)
+                self.config['Thresholds']['threshold_right'] = str(self.threshold_right)
+                self.save_config()
+                self.status_var.set(f"阈值已更新并保存: 左 {self.threshold_left}, 右 {self.threshold_right}")
+                messagebox.showinfo("成功", "阈值已成功更新并保存")
+            else:
+                raise ValueError("阈值必须在0到1之间，且左阈值必须小于右阈值")
         except ValueError as e:
             messagebox.showerror("错误", str(e))
             self.status_var.set("阈值更新失败")
@@ -313,10 +329,18 @@ class TranslatorGUI:
             return
 
         try:
-            def process_ocr_result(ocr_result, window_height):
+            def process_ocr_result(ocr_result, window_height, window_length):
                 threshold_top = int(window_height * self.threshold_top)
                 threshold_bottom = int(window_height * self.threshold_bottom)
-                filtered_text = [block for block in ocr_result if threshold_bottom > block['top'] > threshold_top]
+                threshold_left = int(window_length * self.threshold_left)
+                threshold_right = int(window_length * self.threshold_right)
+
+                filtered_text = [block for block in ocr_result 
+                                if threshold_bottom > block['top'] > threshold_top
+                                and threshold_right > block['left'] > threshold_left]
+                
+                print(f"filtered_ocr_result: {filtered_text}")
+                
                 sorted_text = sorted(filtered_text, key=lambda block: (block['top'], block['left']))
                 processed_text = ''.join([block['text'] for block in sorted_text])
                 return processed_text
@@ -333,12 +357,15 @@ class TranslatorGUI:
                     
             left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
             window_height = bottom - top
+            window_length = right - left
             print(f"window_height: {window_height}")
+            print(f"window_length: {window_length}")
 
             screenshot_path = os.path.join(os.getcwd(), "screenshot.png")
             pyautogui.screenshot(screenshot_path, region=(left, top, right-left, bottom-top))
             
             ocr_result = wcocr.ocr(screenshot_path)
+            
 
             if ocr_result['errcode'] == 0:
                 ocr_result_text = ''.join([block['text'] for block in ocr_result['ocr_response']])
@@ -346,7 +373,7 @@ class TranslatorGUI:
                 if self.last_ocr_result is None or difflib.SequenceMatcher(None, ocr_result_text, self.last_ocr_result).ratio() < 0.95:
                     self.last_ocr_result = ocr_result_text
                     
-                    japanese_text = process_ocr_result(ocr_result['ocr_response'], window_height)
+                    japanese_text = process_ocr_result(ocr_result['ocr_response'], window_height, window_length)
                     print(f"Detected Japanese text: {japanese_text}")
                     
                     romaji_text = get_romaji(japanese_text)

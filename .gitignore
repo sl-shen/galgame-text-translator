@@ -5,5 +5,7 @@
 
 *.spec
 
+*.ini
+
 __pycache__/
 *.py[cod]
