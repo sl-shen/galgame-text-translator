@@ -105,11 +105,18 @@ class TranslatorGUI:
         self.settings_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.settings_tab, text="设置")
 
+        # About tab
+        self.about_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.about_tab, text="关于")
+
         # Create main tab content
         self.create_main_tab()
 
         # Create settings tab content
         self.create_settings_tab()
+
+        # Create about tab content
+        self.create_about_tab()
 
         # Button frame
         button_frame = ttk.Frame(main_frame, padding=(0, 20, 0, 0))
@@ -238,6 +245,34 @@ class TranslatorGUI:
 
         # Configure the grid
         wechat_frame.columnconfigure(1, weight=1)
+
+        
+    def create_about_tab(self):
+        about_frame = ttk.Frame(self.about_tab, padding=20)
+        about_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Title
+        title_label = ttk.Label(about_frame, text="游戏实时翻译助手", font=self.title_font)
+        title_label.pack(pady=(0, 10))
+
+        # Author info
+        author_label = ttk.Label(about_frame, text="by: YUKINOLOV", font=self.text_font)
+        author_label.pack()
+
+        # GitHub link
+        link_label = ttk.Label(about_frame, text="GitHub: https://github.com/sl-shen/galgame-text-translator", 
+                               font=self.text_font, foreground="blue", cursor="hand2")
+        link_label.pack(pady=(5, 20))
+        link_label.bind("<Button-1>", lambda e: self.open_link("https://github.com/sl-shen/galgame-text-translator"))
+
+        # Version info (optional)
+        version_label = ttk.Label(about_frame, text="版本: 1.0", font=self.text_font)
+        version_label.pack()
+
+    def open_link(self, url):
+        import webbrowser
+        webbrowser.open_new(url)    
+        
 
     def browse_path(self, path_var):
         path = filedialog.askdirectory() if "WeChat" in path_var.get() else filedialog.askopenfilename()
