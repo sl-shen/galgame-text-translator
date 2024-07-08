@@ -174,48 +174,66 @@ class TranslatorGUI:
         self.translated_text = tk.Text(translated_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
         self.translated_text.pack(fill=tk.BOTH, expand=True)
 
+
     def create_settings_tab(self):
         # Threshold input frame
         threshold_frame = ttk.LabelFrame(self.settings_tab, text="阈值设置", padding=10)
-        threshold_frame.pack(fill=tk.X, pady=(10, 0))
+        threshold_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
 
-        # Threshold top input
-        ttk.Label(threshold_frame, text="上阈值 (0-1):").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        # load from config file
+        # Create a grid layout for more organized placement
+        threshold_frame.columnconfigure(1, weight=1)
+        threshold_frame.columnconfigure(3, weight=1)
+
+        # Top threshold input
+        ttk.Label(threshold_frame, text="上阈值 (0-1):").grid(row=0, column=0, padx=(5,20), pady=5, sticky=tk.W)
         self.threshold_top_var = tk.StringVar(value=str(self.threshold_top))
         self.threshold_top_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_top_var, width=10)
-        self.threshold_top_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.threshold_top_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
 
-        # Threshold bottom input
-        ttk.Label(threshold_frame, text="下阈值 (0-1):").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
-        # load from config file
+        # Bottom threshold input
+        ttk.Label(threshold_frame, text="下阈值 (0-1):").grid(row=1, column=0, padx=(5,20), pady=5, sticky=tk.W)
         self.threshold_bottom_var = tk.StringVar(value=str(self.threshold_bottom))
         self.threshold_bottom_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_bottom_var, width=10)
-        self.threshold_bottom_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.threshold_bottom_entry.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+
+        # Left threshold input
+        ttk.Label(threshold_frame, text="左阈值 (0-1):").grid(row=0, column=2, padx=(20,5), pady=5, sticky=tk.W)
+        self.threshold_left_var = tk.StringVar(value=str(getattr(self, 'threshold_left', 0.1)))
+        self.threshold_left_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_left_var, width=10)
+        self.threshold_left_entry.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
+
+        # Right threshold input
+        ttk.Label(threshold_frame, text="右阈值 (0-1):").grid(row=1, column=2, padx=(20,5), pady=5, sticky=tk.W)
+        self.threshold_right_var = tk.StringVar(value=str(getattr(self, 'threshold_right', 0.9)))
+        self.threshold_right_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_right_var, width=10)
+        self.threshold_right_entry.grid(row=1, column=3, padx=5, pady=5, sticky=tk.W)
 
         # Apply threshold button
         self.apply_threshold_button = ttk.Button(threshold_frame, text="应用阈值", command=self.apply_threshold, style="info.TButton")
-        self.apply_threshold_button.grid(row=2, column=0, columnspan=2, padx=5, pady=10)
+        self.apply_threshold_button.grid(row=2, column=0, columnspan=4, padx=5, pady=10, sticky=tk.W)
 
         # WeChat path settings frame
         wechat_frame = ttk.LabelFrame(self.settings_tab, text="WeChat 路径设置", padding=10)
-        wechat_frame.pack(fill=tk.X, pady=(10, 0))
+        wechat_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
 
         # WeChat path input
         ttk.Label(wechat_frame, text="WeChat 路径:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
         self.wechat_path_entry = ttk.Entry(wechat_frame, textvariable=self.wechat_path, width=50)
-        self.wechat_path_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.wechat_path_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
         ttk.Button(wechat_frame, text="浏览", command=lambda: self.browse_path(self.wechat_path)).grid(row=0, column=2, padx=5, pady=5)
 
         # WeChatOCR path input
         ttk.Label(wechat_frame, text="WeChatOCR 路径:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
         self.wechatocr_path_entry = ttk.Entry(wechat_frame, textvariable=self.wechatocr_path, width=50)
-        self.wechatocr_path_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.wechatocr_path_entry.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
         ttk.Button(wechat_frame, text="浏览", command=lambda: self.browse_path(self.wechatocr_path)).grid(row=1, column=2, padx=5, pady=5)
 
         # Apply WeChat paths button
         self.apply_wechat_paths_button = ttk.Button(wechat_frame, text="应用 WeChat 路径", command=self.apply_wechat_paths, style="info.TButton")
-        self.apply_wechat_paths_button.grid(row=2, column=0, columnspan=3, padx=5, pady=10)
+        self.apply_wechat_paths_button.grid(row=2, column=0, columnspan=3, padx=5, pady=10, sticky=tk.W)
+
+        # Configure the grid
+        wechat_frame.columnconfigure(1, weight=1)
 
     def browse_path(self, path_var):
         path = filedialog.askdirectory() if "WeChat" in path_var.get() else filedialog.askopenfilename()
