@@ -68,6 +68,10 @@ class TranslatorGUI:
         self.wechat_path = tk.StringVar(value=self.config.get('Paths', 'wechat_path', fallback=r"C:\Program Files (x86)\Tencent\WeChat\[3.9.11.17]"))
         self.wechatocr_path = tk.StringVar(value=self.config.get('Paths', 'wechatocr_path', fallback=os.getenv("APPDATA") + r"\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\7079\extracted\WeChatOCR.exe"))
 
+        # Initialize thresholds
+        self.threshold_top = float(self.config.get('Thresholds', 'threshold_top', fallback='0'))
+        self.threshold_bottom = float(self.config.get('Thresholds', 'threshold_bottom', fallback='1'))
+
         # Use ttkbootstrap for a modern look
         style = Style(theme="cosmo")
 
@@ -127,8 +131,6 @@ class TranslatorGUI:
         self.hwnd = None
         self.last_screenshot_hash = None
         self.last_ocr_result = None
-        self.threshold_top = 0.5
-        self.threshold_bottom = 0.9
 
 
     def load_config(self):
@@ -138,6 +140,10 @@ class TranslatorGUI:
             self.config['Paths'] = {
                 'wechat_path': r"C:\Program Files (x86)\Tencent\WeChat\[3.9.11.17]",
                 'wechatocr_path': os.getenv("APPDATA") + r"\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\7079\extracted\WeChatOCR.exe"
+            }
+            self.config['Thresholds'] = {
+                'threshold_top': '0',
+                'threshold_bottom': '1'
             }
             self.save_config()
 
@@ -175,13 +181,15 @@ class TranslatorGUI:
 
         # Threshold top input
         ttk.Label(threshold_frame, text="上阈值 (0-1):").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        self.threshold_top_var = tk.StringVar(value="0.5")
+        # load from config file
+        self.threshold_top_var = tk.StringVar(value=str(self.threshold_top))
         self.threshold_top_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_top_var, width=10)
         self.threshold_top_entry.grid(row=0, column=1, padx=5, pady=5)
 
         # Threshold bottom input
         ttk.Label(threshold_frame, text="下阈值 (0-1):").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
-        self.threshold_bottom_var = tk.StringVar(value="0.9")
+        # load from config file
+        self.threshold_bottom_var = tk.StringVar(value=str(self.threshold_bottom))
         self.threshold_bottom_entry = ttk.Entry(threshold_frame, textvariable=self.threshold_bottom_var, width=10)
         self.threshold_bottom_entry.grid(row=1, column=1, padx=5, pady=5)
 
@@ -243,7 +251,12 @@ class TranslatorGUI:
             self.threshold_top = float(self.threshold_top_var.get())
             self.threshold_bottom = float(self.threshold_bottom_var.get())
             if 0 <= self.threshold_top < self.threshold_bottom <= 1:
-                self.status_var.set(f"阈值已更新: 上 {self.threshold_top}, 下 {self.threshold_bottom}")
+                # Save the new thresholds to config
+                self.config['Thresholds']['threshold_top'] = str(self.threshold_top)
+                self.config['Thresholds']['threshold_bottom'] = str(self.threshold_bottom)
+                self.save_config()
+                self.status_var.set(f"阈值已更新并保存: 上 {self.threshold_top}, 下 {self.threshold_bottom}")
+                messagebox.showinfo("成功", "阈值已成功更新并保存")
             else:
                 raise ValueError("阈值必须在0到1之间，且上阈值必须小于下阈值")
         except ValueError as e:
