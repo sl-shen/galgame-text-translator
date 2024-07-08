@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, font
+from tkinter import ttk, messagebox, font, filedialog
 from deep_translator import GoogleTranslator
 import pyautogui
 import win32gui
@@ -57,6 +57,11 @@ class TranslatorGUI:
     def __init__(self, master):
         self.master = master
         master.title("实时游戏翻译器")
+
+        
+        # Initialize WeChat paths
+        self.wechat_path = tk.StringVar(value=r"C:\Program Files (x86)\Tencent\WeChat\[3.9.11.17]")
+        self.wechatocr_path = tk.StringVar(value=os.getenv("APPDATA") + r"\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\7079\extracted\WeChatOCR.exe")
 
         # Use ttkbootstrap for a modern look
         style = Style(theme="cosmo")
@@ -162,6 +167,50 @@ class TranslatorGUI:
         # Apply threshold button
         self.apply_threshold_button = ttk.Button(threshold_frame, text="应用阈值", command=self.apply_threshold, style="info.TButton")
         self.apply_threshold_button.grid(row=2, column=0, columnspan=2, padx=5, pady=10)
+
+        # WeChat path settings frame
+        wechat_frame = ttk.LabelFrame(self.settings_tab, text="WeChat 路径设置", padding=10)
+        wechat_frame.pack(fill=tk.X, pady=(10, 0))
+
+        # WeChat path input
+        ttk.Label(wechat_frame, text="WeChat 路径:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.wechat_path_entry = ttk.Entry(wechat_frame, textvariable=self.wechat_path, width=50)
+        self.wechat_path_entry.grid(row=0, column=1, padx=5, pady=5)
+        ttk.Button(wechat_frame, text="浏览", command=lambda: self.browse_path(self.wechat_path)).grid(row=0, column=2, padx=5, pady=5)
+
+        # WeChatOCR path input
+        ttk.Label(wechat_frame, text="WeChatOCR 路径:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        self.wechatocr_path_entry = ttk.Entry(wechat_frame, textvariable=self.wechatocr_path, width=50)
+        self.wechatocr_path_entry.grid(row=1, column=1, padx=5, pady=5)
+        ttk.Button(wechat_frame, text="浏览", command=lambda: self.browse_path(self.wechatocr_path)).grid(row=1, column=2, padx=5, pady=5)
+
+        # Apply WeChat paths button
+        self.apply_wechat_paths_button = ttk.Button(wechat_frame, text="应用 WeChat 路径", command=self.apply_wechat_paths, style="info.TButton")
+        self.apply_wechat_paths_button.grid(row=2, column=0, columnspan=3, padx=5, pady=10)
+
+    def browse_path(self, path_var):
+        path = filedialog.askdirectory() if "WeChat" in path_var.get() else filedialog.askopenfilename()
+        if path:
+            path_var.set(path)
+
+    def apply_wechat_paths(self):
+        try:
+            wechat_path = self.wechat_path.get()
+            wechatocr_path = self.wechatocr_path.get()
+            
+            if not os.path.exists(wechat_path):
+                raise ValueError("WeChat 路径不存在")
+            if not os.path.exists(wechatocr_path):
+                raise ValueError("WeChatOCR 路径不存在")
+            
+            # Re-initialize WeChat OCR with new paths
+            wcocr.init(wechatocr_path, wechat_path)
+            
+            self.status_var.set("WeChat 路径已更新")
+            messagebox.showinfo("成功", "WeChat 路径已成功更新")
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+            self.status_var.set("WeChat 路径更新失败")
 
     def apply_threshold(self):
         try:
