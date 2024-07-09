@@ -3,8 +3,6 @@
 
 /dist/
 
-*.spec
-
 *.ini
 
 __pycache__/
