@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, font, filedialog
+from tkinter import ttk, messagebox, font, filedialog, scrolledtext
 from deep_translator import GoogleTranslator
 import pyautogui
 import win32gui
@@ -13,6 +13,10 @@ import difflib
 from ttkbootstrap import Style
 import configparser
 import sqlite3
+import webbrowser
+import requests
+from bs4 import BeautifulSoup
+import urllib.parse
 
 # Initialize WeChat OCR
 wechat_path = r"e:\WeChat\[3.9.11.19]"
@@ -56,13 +60,15 @@ class WindowSelector:
         return self.hwnd
 
 class DictionaryFeature:
-    def __init__(self, master, notebook, db_path):
+    def __init__(self, master, notebook, db_path, status_var):
         self.master = master
         self.notebook = notebook
         self.db_path = db_path
+        self.status_var = status_var
         self.conn = sqlite3.connect(self.db_path)
         self.create_table()
-        
+        self.jisho_link = None
+
         # create add word area in main tab
         self.create_main_dict_area()
         
@@ -78,7 +84,7 @@ class DictionaryFeature:
         self.jp_entry = ttk.Entry(self.main_dict_frame, width=20)
         self.jp_entry.grid(row=0, column=1, padx=5, pady=2)
 
-        ttk.Label(self.main_dict_frame, text="中文:").grid(row=0, column=2, padx=5, pady=2)
+        ttk.Label(self.main_dict_frame, text="翻译:").grid(row=0, column=2, padx=5, pady=2)
         self.cn_entry = ttk.Entry(self.main_dict_frame, width=20)
         self.cn_entry.grid(row=0, column=3, padx=5, pady=2)
 
@@ -86,19 +92,32 @@ class DictionaryFeature:
         self.romaji_entry = ttk.Entry(self.main_dict_frame, width=20)
         self.romaji_entry.grid(row=0, column=5, padx=5, pady=2)
 
+        confirm_button = ttk.Button(self.main_dict_frame, text="查询", command=self.lookup_word)
+        confirm_button.grid(row=0, column=6, padx=5, pady=2)
+
         add_button = ttk.Button(self.main_dict_frame, text="添加", command=self.add_word)
-        add_button.grid(row=0, column=6, padx=5, pady=2)
+        add_button.grid(row=0, column=7, padx=5, pady=2)
+
+        self.explanation_text = scrolledtext.ScrolledText(self.main_dict_frame, height=4, width=50, wrap=tk.WORD)
+        self.explanation_text.grid(row=1, column=0, columnspan=8, padx=5, pady=5)
+        self.explanation_text.tag_config("link", foreground="blue", underline=1)
+        self.explanation_text.bind("<Button-1>", self.on_click)
+
+    def on_click(self, event):
+        self.explanation_text.tag_names(tk.CURRENT)
 
     def create_dict_tab(self):
-
         self.dict_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.dict_tab, text="词典")
 
-        self.word_list = ttk.Treeview(self.dict_tab, columns=('Japanese', 'Chinese', 'Romaji'), show='headings')
+        self.word_list = ttk.Treeview(self.dict_tab, columns=('Japanese', 'Chinese', 'Romaji', 'Link'), show='headings')
         self.word_list.heading('Japanese', text='日语')
-        self.word_list.heading('Chinese', text='中文')
+        self.word_list.heading('Chinese', text='翻译')
         self.word_list.heading('Romaji', text='罗马音')
+        self.word_list.heading('Link', text='详细链接')
         self.word_list.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.word_list.bind('<Double-1>', self.on_word_double_click)
 
         delete_button = ttk.Button(self.dict_tab, text="删除选中", command=self.delete_word)
         delete_button.pack(pady=10)
@@ -112,58 +131,142 @@ class DictionaryFeature:
         (id INTEGER PRIMARY KEY,
          japanese TEXT NOT NULL,
          chinese TEXT NOT NULL,
-         romaji TEXT)
+         romaji TEXT,
+         explanation TEXT,
+         link TEXT,
+        UNIQUE(japanese, chinese))
         ''')
         self.conn.commit()
+
+    def lookup_word(self):
+        japanese_text = self.jp_entry.get()
+        if japanese_text:
+            try:
+                url = f"https://jisho.org/api/v1/search/words?keyword={urllib.parse.quote(japanese_text)}"
+                response = requests.get(url)
+                data = response.json()
+                
+                if data['data']:
+                    result = data['data'][0]
+                    
+                    # 获取单词和假名
+                    japanese = result['japanese'][0]
+                    word = japanese.get('word', japanese.get('reading', ''))
+                    reading = japanese.get('reading', '')
+
+                    # 获取所有释义
+                    n = 1
+                    meanings = []
+                    for sense in result['senses']:
+                        pos = '; '.join(sense.get('parts_of_speech', []))
+                        defs = '; '.join(sense.get('english_definitions', []))
+
+                        if pos and defs:
+                            meanings.append(f"{n}: [{pos}]\n{defs}")
+                            n+=1
+                            
+                        elif defs:
+                            meanings.append(f"{n}: {defs}")
+                            n+=1
+
+                    meaning = '\n\n'.join(meanings)
+
+                    # 生成 Jisho 链接
+                    self.jisho_link = f"https://jisho.org/search/{urllib.parse.quote(japanese_text)}"
+
+                    # 更新界面
+                    self.jp_entry.delete(0, tk.END)
+                    self.jp_entry.insert(0, word)
+                    self.cn_entry.delete(0, tk.END)
+                    self.cn_entry.insert(0, meaning.split('\n')[0] if meaning else "未找到释义")
+                    self.romaji_entry.delete(0, tk.END)
+                    self.romaji_entry.insert(0, reading)
+                    
+                    explanation = f"单词：{word}\n\n假名：{reading}\n\n释义：\n{meaning}\n\n"
+                    self.explanation_text.delete('1.0', tk.END)
+                    self.explanation_text.insert(tk.END, explanation)
+                    
+                    # 添加可点击的链接
+                    self.explanation_text.insert(tk.END, "详细链接：")
+                    self.explanation_text.insert(tk.END, self.jisho_link, "link")
+                    self.explanation_text.tag_config("link", foreground="blue", underline=1)
+                    self.explanation_text.tag_bind("link", "<Button-1>", self.open_jisho_link)
+                    
+                    self.status_var.set("查询成功")
+                else:
+                    self.status_var.set('未找到词条信息')
+            except requests.RequestException as e:
+                self.status_var.set(f"网络请求错误: {str(e)}")
+            except Exception as e:
+                self.status_var.set(f"查询出错: {str(e)}")
+        else:
+            self.status_var.set("请输入要查询的日语单词")
+
+    def open_jisho_link(self, event):
+        if self.jisho_link:
+            webbrowser.open(self.jisho_link)
 
     def add_word(self):
         japanese = self.jp_entry.get()
         chinese = self.cn_entry.get()
         romaji = self.romaji_entry.get()
+        explanation = self.explanation_text.get('1.0', tk.END).strip()
 
         if japanese and chinese:
             cursor = self.conn.cursor()
-            cursor.execute("INSERT INTO dictionary (japanese, chinese, romaji) VALUES (?, ?, ?)",
-                           (japanese, chinese, romaji))
+            cursor.execute("""
+            INSERT INTO dictionary (japanese, chinese, romaji, explanation) 
+            VALUES (?, ?, ?, ?)
+            """, (japanese, chinese, romaji, explanation))
             self.conn.commit()
 
-            self.word_list.insert('', 'end', values=(japanese, chinese, romaji))
+            self.word_list.insert('', 'end', values=(japanese, chinese, romaji, "查看详情"))
 
             self.jp_entry.delete(0, tk.END)
             self.cn_entry.delete(0, tk.END)
             self.romaji_entry.delete(0, tk.END)
+            self.explanation_text.delete('1.0', tk.END)
 
-            self.master.status_var.set("词汇添加成功")
+            self.status_var.set("词汇添加成功")
+        else:
+            self.status_var.set("词汇添加成功")
 
     def delete_word(self):
         selected_item = self.word_list.selection()[0]
         values = self.word_list.item(selected_item)['values']
 
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM dictionary WHERE japanese=? AND chinese=? AND romaji=?", values)
+        cursor.execute("DELETE FROM dictionary WHERE japanese=? AND chinese=? AND romaji=?", values[:3])
         self.conn.commit()
 
         self.word_list.delete(selected_item)
-        self.master.status_var.set("词汇删除成功")
+        self.status_var.set("词汇删除成功")
 
     def load_words(self):
+        for item in self.word_list.get_children():
+            self.word_list.delete(item)
+
         cursor = self.conn.cursor()
         cursor.execute("SELECT japanese, chinese, romaji FROM dictionary")
         for row in cursor.fetchall():
-            self.word_list.insert('', 'end', values=row)
+            self.word_list.insert('', 'end', values=(*row, "查看详情"))
 
-    def auto_fill(self, japanese_text):
-        # autofill Chinese trans
-        chinese_text = GoogleTranslator(source="ja", target="zh-CN").translate(text=japanese_text)
-        self.cn_entry.delete(0, tk.END)
-        self.cn_entry.insert(0, chinese_text)
+    def on_word_double_click(self, event):
+        item = self.word_list.selection()[0]
+        japanese = self.word_list.item(item, "values")[0]
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT explanation FROM dictionary WHERE japanese=?", (japanese,))
+        result = cursor.fetchone()
+        if result:
+            explanation = result[0]
+            # 显示解释
+            explanation_window = tk.Toplevel(self.master)
+            explanation_window.title(f"解释: {japanese}")
+            explanation_text = scrolledtext.ScrolledText(explanation_window, wrap=tk.WORD)
+            explanation_text.pack(expand=True, fill='both')
+            explanation_text.insert(tk.END, explanation)
+            explanation_text.config(state='disabled')
 
-        # autofill romaji
-        kks = pykakasi.kakasi()
-        result = kks.convert(japanese_text)
-        romaji = ' '.join([item['hepburn'] for item in result])
-        self.romaji_entry.delete(0, tk.END)
-        self.romaji_entry.insert(0, romaji)
 
 class TranslatorGUI:
     def __init__(self, master):
@@ -174,6 +277,9 @@ class TranslatorGUI:
         self.config = configparser.ConfigParser()
         self.config_file = 'translator_config.ini'
         self.load_config()
+
+        self.status_var = tk.StringVar()
+        self.status_var.set("就绪")
         
         # Initialize WeChat paths
         self.wechat_path = tk.StringVar(value=self.config.get('Paths', 'wechat_path', fallback=r"C:\Program Files (x86)\Tencent\WeChat\[3.9.11.17]"))
@@ -189,7 +295,7 @@ class TranslatorGUI:
         style = Style(theme="cosmo")
 
         # Set window size and make it resizable
-        master.geometry("900x800")
+        master.geometry("900x900")
         master.minsize(600, 400)
 
         # Custom fonts
@@ -222,13 +328,16 @@ class TranslatorGUI:
 
         # Initialize dictionary feature
         self.db_path = self.config.get('Database', 'path', fallback='user_dictionary.db')
-        self.dict_feature = DictionaryFeature(self.main_tab, self.notebook, self.db_path)
-
+        self.dict_feature = DictionaryFeature(self.main_tab, self.notebook, self.db_path, self.status_var)
+        
         # Load words into dictionary
         self.dict_feature.load_words()
 
         # Create main tab content
         self.create_main_tab()
+
+        status_bar = ttk.Label(self.master, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Bind text selection to add word
         self.original_text.bind("<<Selection>>", self.on_text_select)
@@ -627,9 +736,7 @@ class TranslatorGUI:
             selected_text = self.original_text.selection_get()
             self.dict_feature.jp_entry.delete(0, tk.END)
             self.dict_feature.jp_entry.insert(0, selected_text)
-            
-            # autofill romaji and translation
-            self.dict_feature.auto_fill(selected_text)
+            self.status_var.set("已选择文本，点击查询按钮获取详细信息")
         except tk.TclError:
             pass  
 
