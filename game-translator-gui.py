@@ -12,6 +12,7 @@ import pykakasi
 import difflib
 from ttkbootstrap import Style
 import configparser
+import sqlite3
 
 # Initialize WeChat OCR
 wechat_path = r"e:\WeChat\[3.9.11.19]"
@@ -54,6 +55,116 @@ class WindowSelector:
         root.destroy()
         return self.hwnd
 
+class DictionaryFeature:
+    def __init__(self, master, notebook, db_path):
+        self.master = master
+        self.notebook = notebook
+        self.db_path = db_path
+        self.conn = sqlite3.connect(self.db_path)
+        self.create_table()
+        
+        # create add word area in main tab
+        self.create_main_dict_area()
+        
+        # create dictionary tab
+        self.create_dict_tab()
+
+    def create_main_dict_area(self):
+
+        self.main_dict_frame = ttk.LabelFrame(self.master, text="快速添加词汇")
+        self.main_dict_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(self.main_dict_frame, text="日语:").grid(row=0, column=0, padx=5, pady=2)
+        self.jp_entry = ttk.Entry(self.main_dict_frame, width=20)
+        self.jp_entry.grid(row=0, column=1, padx=5, pady=2)
+
+        ttk.Label(self.main_dict_frame, text="中文:").grid(row=0, column=2, padx=5, pady=2)
+        self.cn_entry = ttk.Entry(self.main_dict_frame, width=20)
+        self.cn_entry.grid(row=0, column=3, padx=5, pady=2)
+
+        ttk.Label(self.main_dict_frame, text="罗马音:").grid(row=0, column=4, padx=5, pady=2)
+        self.romaji_entry = ttk.Entry(self.main_dict_frame, width=20)
+        self.romaji_entry.grid(row=0, column=5, padx=5, pady=2)
+
+        add_button = ttk.Button(self.main_dict_frame, text="添加", command=self.add_word)
+        add_button.grid(row=0, column=6, padx=5, pady=2)
+
+    def create_dict_tab(self):
+
+        self.dict_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.dict_tab, text="词典")
+
+        self.word_list = ttk.Treeview(self.dict_tab, columns=('Japanese', 'Chinese', 'Romaji'), show='headings')
+        self.word_list.heading('Japanese', text='日语')
+        self.word_list.heading('Chinese', text='中文')
+        self.word_list.heading('Romaji', text='罗马音')
+        self.word_list.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        delete_button = ttk.Button(self.dict_tab, text="删除选中", command=self.delete_word)
+        delete_button.pack(pady=10)
+
+        self.load_words()
+
+    def create_table(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dictionary
+        (id INTEGER PRIMARY KEY,
+         japanese TEXT NOT NULL,
+         chinese TEXT NOT NULL,
+         romaji TEXT)
+        ''')
+        self.conn.commit()
+
+    def add_word(self):
+        japanese = self.jp_entry.get()
+        chinese = self.cn_entry.get()
+        romaji = self.romaji_entry.get()
+
+        if japanese and chinese:
+            cursor = self.conn.cursor()
+            cursor.execute("INSERT INTO dictionary (japanese, chinese, romaji) VALUES (?, ?, ?)",
+                           (japanese, chinese, romaji))
+            self.conn.commit()
+
+            self.word_list.insert('', 'end', values=(japanese, chinese, romaji))
+
+            self.jp_entry.delete(0, tk.END)
+            self.cn_entry.delete(0, tk.END)
+            self.romaji_entry.delete(0, tk.END)
+
+            self.master.status_var.set("词汇添加成功")
+
+    def delete_word(self):
+        selected_item = self.word_list.selection()[0]
+        values = self.word_list.item(selected_item)['values']
+
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM dictionary WHERE japanese=? AND chinese=? AND romaji=?", values)
+        self.conn.commit()
+
+        self.word_list.delete(selected_item)
+        self.master.status_var.set("词汇删除成功")
+
+    def load_words(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT japanese, chinese, romaji FROM dictionary")
+        for row in cursor.fetchall():
+            self.word_list.insert('', 'end', values=row)
+
+    def auto_fill(self, japanese_text):
+        # autofill Chinese trans
+        chinese_text = GoogleTranslator(source="ja", target="zh-CN").translate(text=japanese_text)
+        self.cn_entry.delete(0, tk.END)
+        self.cn_entry.insert(0, chinese_text)
+
+        # autofill romaji
+        kks = pykakasi.kakasi()
+        result = kks.convert(japanese_text)
+        romaji = ' '.join([item['hepburn'] for item in result])
+        self.romaji_entry.delete(0, tk.END)
+        self.romaji_entry.insert(0, romaji)
+
 class TranslatorGUI:
     def __init__(self, master):
         self.master = master
@@ -78,7 +189,7 @@ class TranslatorGUI:
         style = Style(theme="cosmo")
 
         # Set window size and make it resizable
-        master.geometry("900x700")
+        master.geometry("900x800")
         master.minsize(600, 400)
 
         # Custom fonts
@@ -109,8 +220,19 @@ class TranslatorGUI:
         self.about_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.about_tab, text="关于")
 
+        # Initialize dictionary feature
+        self.db_path = self.config.get('Database', 'path', fallback='user_dictionary.db')
+        self.dict_feature = DictionaryFeature(self.main_tab, self.notebook, self.db_path)
+
+        # Load words into dictionary
+        self.dict_feature.load_words()
+
         # Create main tab content
         self.create_main_tab()
+
+        # Bind text selection to add word
+        self.original_text.bind("<<Selection>>", self.on_text_select)
+     
 
         # Create settings tab content
         self.create_settings_tab()
@@ -156,12 +278,14 @@ class TranslatorGUI:
                 'threshold_left': '0',
                 'threshold_right': '1'
             }
+            self.config['Database'] = {
+                'path': 'user_dictionary.db'
+            }
             self.save_config()
 
     def save_config(self):
         with open(self.config_file, 'w') as configfile:
             self.config.write(configfile)
-
 
     def create_main_tab(self):
         # Original text area
@@ -184,7 +308,6 @@ class TranslatorGUI:
 
         self.translated_text = tk.Text(translated_frame, height=5, width=50, font=self.text_font, wrap=tk.WORD)
         self.translated_text.pack(fill=tk.BOTH, expand=True)
-
 
     def create_settings_tab(self):
         # Threshold input frame
@@ -246,7 +369,23 @@ class TranslatorGUI:
         # Configure the grid
         wechat_frame.columnconfigure(1, weight=1)
 
-        
+        # Database path settings
+        db_frame = ttk.LabelFrame(self.settings_tab, text="数据库设置", padding=10)
+        db_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
+
+        ttk.Label(db_frame, text="数据库路径:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.db_path_var = tk.StringVar(value=self.db_path)
+        self.db_path_entry = ttk.Entry(db_frame, textvariable=self.db_path_var, width=50)
+        self.db_path_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
+        ttk.Button(db_frame, text="浏览", command=self.choose_db_path).grid(row=0, column=2, padx=5, pady=5)
+
+        # Apply database path button
+        self.apply_db_path_button = ttk.Button(db_frame, text="应用数据库路径", command=self.apply_db_path, style="info.TButton")
+        self.apply_db_path_button.grid(row=1, column=0, columnspan=3, padx=5, pady=10, sticky=tk.W)
+
+        # Configure the grid
+        db_frame.columnconfigure(1, weight=1)
+
     def create_about_tab(self):
         about_frame = ttk.Frame(self.about_tab, padding=20)
         about_frame.pack(fill=tk.BOTH, expand=True)
@@ -271,8 +410,7 @@ class TranslatorGUI:
 
     def open_link(self, url):
         import webbrowser
-        webbrowser.open_new(url)    
-        
+        webbrowser.open_new(url)
 
     def browse_path(self, path_var):
         path = filedialog.askdirectory() if "WeChat" in path_var.get() else filedialog.askopenfilename()
@@ -309,28 +447,76 @@ class TranslatorGUI:
             self.threshold_bottom = float(self.threshold_bottom_var.get())
             self.threshold_left = float(self.threshold_left_var.get())
             self.threshold_right = float(self.threshold_right_var.get())
-            if 0 <= self.threshold_top < self.threshold_bottom <= 1:
+            if 0 <= self.threshold_top < self.threshold_bottom <= 1 and 0 <= self.threshold_left < self.threshold_right <= 1:
                 # Save the new thresholds to config
                 self.config['Thresholds']['threshold_top'] = str(self.threshold_top)
                 self.config['Thresholds']['threshold_bottom'] = str(self.threshold_bottom)
-                self.save_config()
-                self.status_var.set(f"阈值已更新并保存: 上 {self.threshold_top}, 下 {self.threshold_bottom}")
-                messagebox.showinfo("成功", "阈值已成功更新并保存")
-            else:
-                raise ValueError("阈值必须在0到1之间，且上阈值必须小于下阈值")
-            
-            if 0 <= self.threshold_left < self.threshold_right <= 1:
-                # Save the new thresholds to config
                 self.config['Thresholds']['threshold_left'] = str(self.threshold_left)
                 self.config['Thresholds']['threshold_right'] = str(self.threshold_right)
                 self.save_config()
-                self.status_var.set(f"阈值已更新并保存: 左 {self.threshold_left}, 右 {self.threshold_right}")
+                self.status_var.set(f"阈值已更新并保存: 上 {self.threshold_top}, 下 {self.threshold_bottom}, 左 {self.threshold_left}, 右 {self.threshold_right}")
                 messagebox.showinfo("成功", "阈值已成功更新并保存")
             else:
-                raise ValueError("阈值必须在0到1之间，且左阈值必须小于右阈值")
+                raise ValueError("阈值必须在0到1之间，且上阈值必须小于下阈值，左阈值必须小于右阈值")
         except ValueError as e:
             messagebox.showerror("错误", str(e))
             self.status_var.set("阈值更新失败")
+
+    def choose_db_path(self):
+        db_path = filedialog.asksaveasfilename(defaultextension=".db",
+                                               filetypes=[("SQLite Database", "*.db")])
+        if db_path:
+            self.db_path_var.set(db_path)
+
+    def apply_db_path(self):
+        new_db_path = self.db_path_var.get()
+        if new_db_path != self.db_path:
+            try:
+                # Create a new connection to the new database
+                new_conn = sqlite3.connect(new_db_path)
+                
+                # Create the table in the new database
+                cursor = new_conn.cursor()
+                cursor.execute('''
+                CREATE TABLE IF NOT EXISTS dictionary
+                (id INTEGER PRIMARY KEY,
+                 japanese TEXT NOT NULL,
+                 chinese TEXT NOT NULL,
+                 romaji TEXT)
+                ''')
+                new_conn.commit()
+
+                # Copy data from old database to new database
+                old_conn = self.dict_feature.conn
+                old_cursor = old_conn.cursor()
+                new_cursor = new_conn.cursor()
+
+                old_cursor.execute("SELECT * FROM dictionary")
+                rows = old_cursor.fetchall()
+
+                new_cursor.executemany("INSERT INTO dictionary VALUES (?, ?, ?, ?)", rows)
+                new_conn.commit()
+
+                # Close old connection and update to new connection
+                old_conn.close()
+                self.dict_feature.conn = new_conn
+                self.db_path = new_db_path
+
+                # Update config
+                self.config['Database']['path'] = new_db_path
+                self.save_config()
+
+                # Refresh dictionary display
+                self.dict_feature.word_list.delete(*self.dict_feature.word_list.get_children())
+                self.dict_feature.load_words()
+
+                self.status_var.set("数据库路径已更新并保存")
+                messagebox.showinfo("成功", "数据库路径已成功更新并保存")
+            except Exception as e:
+                messagebox.showerror("错误", f"更新数据库路径时出错: {str(e)}")
+                self.status_var.set("数据库路径更新失败")
+        else:
+            self.status_var.set("数据库路径未变更")
 
     def select_window(self):
         selector = WindowSelector()
@@ -401,7 +587,6 @@ class TranslatorGUI:
             
             ocr_result = wcocr.ocr(screenshot_path)
             
-
             if ocr_result['errcode'] == 0:
                 ocr_result_text = ''.join([block['text'] for block in ocr_result['ocr_response']])
                 
@@ -436,6 +621,17 @@ class TranslatorGUI:
         
         if self.is_translating:
             self.master.after(1000, self.translate_loop)
+
+    def on_text_select(self, event):
+        try:
+            selected_text = self.original_text.selection_get()
+            self.dict_feature.jp_entry.delete(0, tk.END)
+            self.dict_feature.jp_entry.insert(0, selected_text)
+            
+            # autofill romaji and translation
+            self.dict_feature.auto_fill(selected_text)
+        except tk.TclError:
+            pass  
 
 def main():
     root = tk.Tk()
